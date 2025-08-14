@@ -1,4 +1,4 @@
-name: CI/CD — Docker & Kubernetes
+name: CI & CD — Docker & Kubernetes
 
 on:
   push:
@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  CI:
-    # First build on GitHub-hosted runner
+  CI_Push:
+    # Build job on GitHub-hosted runner
     runs-on: ubuntu-latest
 
     steps:
@@ -31,18 +31,18 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/hello-kubernetes:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/hello-kubernetes:${{ github.sha }}
 
-  CD:
-    # Deploy on your EC2 self-hosted runner
-    needs: build-and-deploy
+  CD_Deploy:
+    # Deploy job on your EC2 self-hosted runner
+    needs: CI_Push
     runs-on: [self-hosted, ec2-k3s]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set Kubernetes context (optional if already set)
+      - name: Verify Kubernetes cluster access
         run: |
-          sudo kubectl config view
           sudo kubectl get nodes
+          sudo kubectl get pods -A
 
       - name: Deploy to Kubernetes
         run: |
