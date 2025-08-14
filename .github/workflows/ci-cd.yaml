@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  CI:
     # First build on GitHub-hosted runner
     runs-on: ubuntu-latest
 
@@ -31,7 +31,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/hello-kubernetes:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/hello-kubernetes:${{ github.sha }}
 
-  deploy:
+  CD:
     # Deploy on your EC2 self-hosted runner
     needs: build-and-deploy
     runs-on: [self-hosted, ec2-k3s]
