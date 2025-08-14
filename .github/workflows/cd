@@ -1,0 +1,21 @@
+name: CD — Deploy to k3s
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Docker tag (latest or commit SHA)"
+        required: true
+        default: latest
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, ec2-k3s]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update deployment image
+        run: |
+          IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/hello-kubernetes:${{ github.event.inputs.tag }}
+          sudo kubectl set image deployment/hello-kubernetes hello-kubernetes=$IMAGE --record
+          sudo kubectl rollout status deployment/hello-kubernetes --timeout=120s
