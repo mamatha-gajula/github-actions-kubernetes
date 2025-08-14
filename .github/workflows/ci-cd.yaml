@@ -1,4 +1,4 @@
-name: CI & CD — Docker & Kubernetes (Staged)
+name: CI & CD — Docker & Kubernetes
 
 on:
   push:
@@ -6,67 +6,46 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ---------------- CI: Stage 1 (Preflight) ----------------
-  CI_Preflight_Login:
+  CI_Push:
+    # Build job on GitHub-hosted runner
     runs-on: ubuntu-latest
-    outputs:
-      username_lower: ${{ steps.norm.outputs.username_lower }}
+
     steps:
+      # Checkout repository
       - uses: actions/checkout@v4
 
-      - name: Normalize Docker Hub username to lowercase (required by Hub)
-        id: norm
-        shell: bash
-        run: |
-          USERNAME_LOWER=$(echo '${{ secrets.DOCKERHUB_USERNAME }}' | tr '[:upper:]' '[:lower:]')
-          echo "username_lower=$USERNAME_LOWER" >> "$GITHUB_OUTPUT"
+      # Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Docker login (fail fast if creds bad)
-        shell: bash
-        run: |
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ steps.norm.outputs.username_lower }}" --password-stdin
-          echo "Logged in as:"
-          docker info 2>/dev/null | grep -i '^ Username' || true
-
-  # ---------------- CI: Stage 2 (Build & Push) ----------------
-  CI_Build_Push:
-    needs: CI_Preflight_Login
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
+      # Build and push image
       - name: Build & Push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ${{ needs.CI_Preflight_Login.outputs.username_lower }}/hello-kubernetes:latest
-            ${{ needs.CI_Preflight_Login.outputs.username_lower }}/hello-kubernetes:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/hello-kubernetes:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/hello-kubernetes:${{ github.sha }}
 
-  # ---------------- CD: Stage 1 (Verify cluster) ----------------
-  CD_Verify_Cluster:
-    needs: CI_Build_Push
+  CD_Deploy:
+    # Deploy job on your EC2 self-hosted runner
+    needs: CI_Push
     runs-on: [self-hosted, ec2-k3s]
+
     steps:
       - uses: actions/checkout@v4
-      - name: Verify Kubernetes access
+
+      - name: Verify Kubernetes cluster access
         run: |
           sudo kubectl get nodes
           sudo kubectl get pods -A
 
-  # ---------------- CD: Stage 2 (Deploy) ----------------
-  CD_Deploy:
-    needs: CD_Verify_Cluster
-    runs-on: [self-hosted, ec2-k3s]
-    steps:
-      - uses: actions/checkout@v4
       - name: Deploy to Kubernetes
-        shell: bash
         run: |
-          IMAGE=${{ needs.CI_Preflight_Login.outputs.username_lower }}/hello-kubernetes:latest
-          echo "Deploying image: $IMAGE"
-          sudo kubectl set image deployment/hello-kubernetes hello-kubernetes="$IMAGE" --record
-          sudo kubectl rollout status deployment/hello-kubernetes --timeout=180s
-      - name: Show service (where it loads)
-        run: sudo kubectl get svc hello-kubernetes-service -o wide || sudo kubectl get svc -o wide
+          IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/hello-kubernetes:latest
+          sudo kubectl set image deployment/hello-kubernetes hello-kubernetes=$IMAGE --record
+          sudo kubectl rollout status deployment/hello-kubernetes --timeout=120s
